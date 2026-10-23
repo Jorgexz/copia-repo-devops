@@ -1,17 +1,79 @@
-name: CI
+name: CI/CD Pipeline - DevOps Parcial 2
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main, master ]
   pull_request:
-    branches:
-      - main
+    branches: [ main, master ]
 
 jobs:
-  hello:
+  build-and-test:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Mostrar mensaje
-        run: echo "Hola desde GitHub Actions"
+      - name: Checkout del repositorio
+        uses: actions/checkout@v3
+
+      # ==========================================
+      # 🧪 IE2: PRUEBAS AUTOMATIZADAS Y POLÍTICAS DE CALIDAD
+      # ==========================================
+      - name: Validación Estructural de Código (Prueba estática)
+        run: |
+          echo "Iniciando validación de políticas de calidad del proyecto..."
+          # Verificar que los archivos críticos existan y tengan contenido HTML válido básico
+          if [ -f "index.html" ] && grep -q "<html" index.html; then
+            echo "[✔] OK: index.html existe y contiene estructura HTML válida."
+          else
+            echo "[❌] ERROR: index.html no cumple con los estándares de calidad."
+            exit 1
+          fi
+
+      - name: Configurar Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Construir Imagen Temporal para Pruebas
+        run: |
+          docker build -t test-microservice:${{ github.sha }} .
+
+      # ==========================================
+      # 🔒 IE3: ESCANEO DE SEGURIDAD Y GOBERNANZA (Snyk)
+      # ==========================================
+      - name: 🔒 IE3 - Escaneo de Seguridad de la Imagen con Snyk
+        uses: snyk/actions/docker@master
+        continue-on-error: false # Bloquea el pipeline si hay vulnerabilidades críticas
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          image: test-microservice:${{ github.sha }}
+          args: --severity-threshold=high
+
+      # ==========================================
+      # 🧪 IE2: SMOKE TEST / PRUEBA FUNCIONAL
+      # ==========================================
+      - name: Ejecución de Smoke Test (Prueba funcional automatizada)
+        run: |
+          echo "Levantando contenedor en entorno aislado para prueba de integración..."
+          docker run -d -p 8080:80 --name container-test test-microservice:${{ github.sha }}
+          
+          # Esperar 3 segundos a que Nginx inicialice correctamente
+          sleep 3
+          
+          echo "Verificando respuesta HTTP del microservicio..."
+          # Realizar petición curl para comprobar que el servicio responde con código 200 (Caso crítico)
+          http_status=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080)
+          
+          echo "Código HTTP obtenido: $http_status"
+          
+          if [ "$http_status" -eq 200 ]; then
+            echo "[✔] ÉXITO: La prueba automatizada de integración (Smoke Test) pasó correctamente."
+          else
+            echo "[❌] FALLO: El microservicio no respondió con HTTP 200 (Código: $http_status)."
+            exit 1
+          fi
+
+      # ==========================================
+      # 📦 IE4: TRAZABILIDAD Y ETIQUETADO FINAL
+      # ==========================================
+      - name: Etiquetado final para Trazabilidad (IE4)
+        run: |
+          docker tag test-microservice:${{ github.sha }} mi-sitio-devops:latest
+          echo "Imagen validada y lista para despliegue."
