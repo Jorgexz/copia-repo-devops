@@ -19,9 +19,9 @@ jobs:
         run: |
           echo "Iniciando validación de políticas de calidad del proyecto..."
           if [ -f "index.html" ] && grep -q "<html" index.html; then
-            echo "[✔] OK: index.html existe y contiene estructura HTML válida."
+            echo "OK: index.html existe y contiene estructura HTML válida."
           else
-            echo "[❌] ERROR: index.html no cumple con los estándares de calidad."
+            echo "ERROR: index.html no cumple con los estándares de calidad."
             exit 1
           fi
 
@@ -42,7 +42,7 @@ jobs:
           image: test-microservice:${{ github.sha }}
           args: --severity-threshold=high
 
-      #SMOKE TEST / PRUEBA FUNCIONAL
+      # SMOKE TEST / PRUEBA FUNCIONAL
       - name: Ejecución de Smoke Test (Prueba funcional automatizada)
         run: |
           echo "Levantando contenedor en entorno aislado para prueba de integración..."
@@ -52,8 +52,11 @@ jobs:
           echo "Código HTTP obtenido: $http_status"
           if [ "$http_status" -eq 200 ]; then
             echo "[✔] ÉXITO: La prueba automatizada pasó correctamente."
+            # Limpieza de entorno para liberar el puerto 8080
+            docker rm -f container-test
           else
-            echo "[❌] FALLO: El microservicio no respondió con HTTP 200."
+            echo "FALLO: El microservicio no respondió con HTTP 200."
+            docker rm -f container-test
             exit 1
           fi
 
