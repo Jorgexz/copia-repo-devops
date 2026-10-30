@@ -2,9 +2,9 @@ name: CI/CD Pipeline - DevOps Parcial 2
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main, develop ]
   pull_request:
-    branches: [ main, master ]
+    branches: [ main, develop ]
 
 jobs:
   build-and-test:
@@ -13,67 +13,79 @@ jobs:
       - name: Checkout del repositorio
         uses: actions/checkout@v3
 
-      # ==========================================
-      # 🧪 IE2: PRUEBAS AUTOMATIZADAS Y POLÍTICAS DE CALIDAD
-      # ==========================================
+    
+      #PRUEBAS AUTOMATIZADAS Y POLÍTICAS DE CALIDAD
       - name: Validación Estructural de Código (Prueba estática)
         run: |
           echo "Iniciando validación de políticas de calidad del proyecto..."
-          # Verificar que los archivos críticos existan y tengan contenido HTML válido básico
           if [ -f "index.html" ] && grep -q "<html" index.html; then
-            echo "[✔] OK: index.html existe y contiene estructura HTML válida."
+            echo "OK: index.html existe y contiene estructura HTML válida."
           else
-            echo "[❌] ERROR: index.html no cumple con los estándares de calidad."
+            echo "ERROR: index.html no cumple con los estándares de calidad."
             exit 1
           fi
 
       - name: Configurar Docker Buildx
         uses: docker/setup-buildx-action@v2
 
-      - name: Construir Imagen Temporal para Pruebas
+      - name: Construir Imagen Temporal para Pruebas (IE1)
         run: |
           docker build -t test-microservice:${{ github.sha }} .
 
-      # ==========================================
-      # 🔒 IE3: ESCANEO DE SEGURIDAD Y GOBERNANZA (Snyk)
-      # ==========================================
-      - name: 🔒 IE3 - Escaneo de Seguridad de la Imagen con Snyk
+      #ESCANEO DE SEGURIDAD Y GOBERNANZA (Snyk)
+      - name: Escaneo de Seguridad de la Imagen con Snyk
         uses: snyk/actions/docker@master
-        continue-on-error: false # Bloquea el pipeline si hay vulnerabilidades críticas
+        continue-on-error: false
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         with:
           image: test-microservice:${{ github.sha }}
           args: --severity-threshold=high
 
-      # ==========================================
-      # 🧪 IE2: SMOKE TEST / PRUEBA FUNCIONAL
-      # ==========================================
+      # SMOKE TEST / PRUEBA FUNCIONAL
       - name: Ejecución de Smoke Test (Prueba funcional automatizada)
         run: |
           echo "Levantando contenedor en entorno aislado para prueba de integración..."
           docker run -d -p 8080:80 --name container-test test-microservice:${{ github.sha }}
-          
-          # Esperar 3 segundos a que Nginx inicialice correctamente
           sleep 3
-          
-          echo "Verificando respuesta HTTP del microservicio..."
-          # Realizar petición curl para comprobar que el servicio responde con código 200 (Caso crítico)
           http_status=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080)
-          
           echo "Código HTTP obtenido: $http_status"
-          
           if [ "$http_status" -eq 200 ]; then
-            echo "[✔] ÉXITO: La prueba automatizada de integración (Smoke Test) pasó correctamente."
+            echo "[✔] ÉXITO: La prueba automatizada pasó correctamente."
+            # Limpieza de entorno para liberar el puerto 8080
+            docker rm -f container-test
           else
-            echo "[❌] FALLO: El microservicio no respondió con HTTP 200 (Código: $http_status)."
+            echo "FALLO: El microservicio no respondió con HTTP 200."
+            docker rm -f container-test
             exit 1
           fi
 
-      # ==========================================
-      # 📦 IE4: TRAZABILIDAD Y ETIQUETADO FINAL
-      # ==========================================
-      - name: Etiquetado final para Trazabilidad (IE4)
+      #TRAZABILIDAD Y ETIQUETADO FINAL
+      - name: Etiquetado final para Trazabilidad
         run: |
           docker tag test-microservice:${{ github.sha }} mi-sitio-devops:latest
           echo "Imagen validada y lista para despliegue."
+
+      # DESPLIEGUE EN PRODUCCIÓN (AWS EC2)
+
+      # ==========================================
+      - name: Copiar archivos al servidor EC2
+        uses: appleboy/scp-action@master
+        with:
+          host: ${{ secrets.HOST }}
+          username: ubuntu
+          key: ${{ secrets.SSH_KEY }}
+          source: "."
+          target: "/home/ubuntu/app-devops"
+
+      - name: Ejecutar despliegue remoto en AWS
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.HOST }}
+          username: ubuntu
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            cd /home/ubuntu/app-devops
+            docker compose down
+            docker compose up -d --build
+            docker image prune -f
