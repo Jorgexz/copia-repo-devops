@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout del repositorio
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
     
       #PRUEBAS AUTOMATIZADAS Y POLÍTICAS DE CALIDAD
@@ -26,7 +26,7 @@ jobs:
           fi
 
       - name: Configurar Docker Buildx
-        uses: docker/setup-buildx-action@v2
+        uses: docker/setup-buildx-action@v3
 
       - name: Construir Imagen Temporal para Pruebas (IE1)
         run: |
